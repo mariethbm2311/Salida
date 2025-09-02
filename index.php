@@ -4,6 +4,17 @@ session_start();
 $usuario_valido = 'admin';
 $contrasena_valida = '1234';
 
+$host = 'localhost';
+$db   = 'salidaobjetos';
+$user = 'root';  // usuario XAMPP
+$pass = '';      // contraseña XAMPP vacía
+$conn = new mysqli($host, $user, $pass, $db);
+
+if ($conn->connect_error) {
+    die("Conexión fallida: " . $conn->connect_error);
+}
+
+
 if (isset($_POST['usuario']) && isset($_POST['contrasena'])) {
 	if ($_POST['usuario'] === $usuario_valido && $_POST['contrasena'] === $contrasena_valida) {
 		$_SESSION['usuario'] = $usuario_valido;
@@ -26,135 +37,128 @@ if (!isset($_SESSION['objetos'])) {
 	$_SESSION['objetos'] = [];
 }
 
+
 // Agregar o actualizar
 if (isset($_POST['guardar_objeto'])) {
-	$dni = trim($_POST['dni'] ?? '');
-	$nombre = trim($_POST['nombre'] ?? '');
-	$apaterno = trim($_POST['apaterno'] ?? '');
-	$amaterno = trim($_POST['amaterno'] ?? '');
-	$area = trim($_POST['area'] ?? '');
-	$item = trim($_POST['item'] ?? '');
-	$osolicitado = trim($_POST['osolicitado'] ?? '');
-	$descripcion = trim($_POST['descripcion'] ?? '');
-	$cantidad = intval($_POST['cantidad'] ?? 0);
-	$estado = 'Prestado'; // Estado por defecto al crear
-	$edit_id = $_POST['edit_id'] ?? '';
+    $dni = trim($_POST['dni'] ?? '');
+    $nombre = trim($_POST['nombre'] ?? '');
+    $apaterno = trim($_POST['apaterno'] ?? '');
+    $amaterno = trim($_POST['amaterno'] ?? '');
+    $area = trim($_POST['area'] ?? '');
+    $item = trim($_POST['item'] ?? '');
+    $osolicitado = trim($_POST['osolicitado'] ?? '');
+    $descripcion = trim($_POST['descripcion'] ?? '');
+    $cantidad = intval($_POST['cantidad'] ?? 0);
+    $estado = 'Prestado';
+    $edit_id = $_POST['edit_id'] ?? '';
 	
 	// Validaciones
 	$errores = [];
-	
-	if (strlen($dni) < 7 || strlen($dni) > 8) {
-		$errores[] = 'El DNI debe tener entre 7 y 8 dígitos';
-	}
-	
-	if (strlen($nombre) < 2 || strlen($nombre) > 50) {
-		$errores[] = 'El nombre debe tener entre 2 y 50 caracteres';
-	}
-	
-	if (strlen($apaterno) < 2 || strlen($apaterno) > 50) {
-		$errores[] = 'El apellido paterno debe tener entre 2 y 50 caracteres';
-	}
-	
-	if (strlen($amaterno) > 50) {
-		$errores[] = 'El apellido materno no puede exceder los 50 caracteres';
-	}
-	
-	if (empty($area)) {
-		$errores[] = 'Debe seleccionar un área';
-	}
-	
-	if (empty($item)) {
-		$errores[] = 'El item es obligatorio';
-	}
-	
-	if (empty($osolicitado)) {
-		$errores[] = 'Debe seleccionar un objeto solicitado';
-	}
-	
-	if ($cantidad < 1 || $cantidad > 100) {
-		$errores[] = 'La cantidad debe ser entre 1 y 100';
-	}
-	
-	// Si no hay errores, proceder a guardar
+    if (strlen($dni) < 7 || strlen($dni) > 8) $errores[] = 'El DNI debe tener entre 7 y 8 dígitos';
+    if (strlen($nombre) < 2 || strlen($nombre) > 50) $errores[] = 'El nombre debe tener entre 2 y 50 caracteres';
+    if (strlen($apaterno) < 2 || strlen($apaterno) > 50) $errores[] = 'El apellido paterno debe tener entre 2 y 50 caracteres';
+    if (strlen($amaterno) > 50) $errores[] = 'El apellido materno no puede exceder los 50 caracteres';
+    if (empty($area)) $errores[] = 'Debe seleccionar un área';
+    if (empty($item)) $errores[] = 'El item es obligatorio';
+    if (empty($osolicitado)) $errores[] = 'Debe seleccionar un objeto solicitado';
+    if ($cantidad < 1 || $cantidad > 100) $errores[] = 'La cantidad debe ser entre 1 y 100';
 	if (empty($errores)) {
-		$objeto = [
-			'fecha' => date('Y-m-d H:i:s'),
-			'dni' => $dni,
-			'nombre' => $nombre,
-			'apaterno' => $apaterno,
-			'amaterno' => $amaterno,
-			'area' => $area,
-			'item' => $item,
-			'osolicitado' => $osolicitado,
-			'descripcion' => $descripcion,
-			'cantidad' => $cantidad,
-			'estado' => $estado
-		];
-		
-		if ($edit_id !== '' && isset($_SESSION['objetos'][$edit_id])) {
-			// Mantener el estado actual al editar, a menos que se esté cambiando explícitamente
-			$objeto['estado'] = $_SESSION['objetos'][$edit_id]['estado'];
-			$_SESSION['objetos'][$edit_id] = $objeto;
-		} else {
-			$_SESSION['objetos'][] = $objeto;
-		}
-		
-		header('Location: index.php');
-		exit();
-	}
+
+	// --- INSERT en la base de datos ---
+	$stmt = $conn->prepare("INSERT INTO objetos 
+    (dni, nombre, apaterno, amaterno, area, item, osolicitado, descripcion, cantidad, estado) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+
+	// Verificar si la preparación fue exitosa
+	if ($stmt === false) {
+    die("Error en la preparación de la consulta: " . $conn->error);
+}
+
+	// Ligar parámetros
+	$stmt->bind_param("ssssssssis", $dni, $nombre, $apaterno, $amaterno, $area, $item, $osolicitado, $descripcion, $cantidad, $estado);
+
+	// Ejecutar la sentencia
+	if (!$stmt->execute()) {
+    die("Error al insertar el objeto: " . $stmt->error);
+}
+
+	// Cerrar la sentencia
+	$stmt->close();
+
+		 // --- Guardar también en sesión ---
+        $objeto = [
+            'fecha' => date('Y-m-d H:i:s'),
+            'dni' => $dni,
+            'nombre' => $nombre,
+            'apaterno' => $apaterno,
+            'amaterno' => $amaterno,
+            'area' => $area,
+            'item' => $item,
+            'osolicitado' => $osolicitado,
+            'descripcion' => $descripcion,
+            'cantidad' => $cantidad,
+            'estado' => $estado
+        ];
+
+        if ($edit_id !== '' && isset($_SESSION['objetos'][$edit_id])) {
+            $objeto['estado'] = $_SESSION['objetos'][$edit_id]['estado'];
+            $_SESSION['objetos'][$edit_id] = $objeto;
+        } else {
+            $_SESSION['objetos'][] = $objeto;
+        }
+
+        // Redireccionar para evitar resubmission
+        header('Location: index.php');
+        exit();
+    }
 }
 
 // Cambiar estado
 if (isset($_GET['cambiar_estado'])) {
-	$id = $_GET['cambiar_estado'];
-	if (isset($_SESSION['objetos'][$id])) {
-		$_SESSION['objetos'][$id]['estado'] = 
-			($_SESSION['objetos'][$id]['estado'] === 'Prestado') ? 'Devuelto' : 'Prestado';
-	}
-	header('Location: index.php');
-	exit();
+    $id = $_GET['cambiar_estado'];
+    if (isset($_SESSION['objetos'][$id])) {
+        $_SESSION['objetos'][$id]['estado'] =
+            ($_SESSION['objetos'][$id]['estado'] === 'Prestado') ? 'Devuelto' : 'Prestado';
+    }
+    header('Location: index.php');
+    exit();
 }
 
 // Eliminar
 if (isset($_GET['eliminar'])) {
-	$id = $_GET['eliminar'];
-	if (isset($_SESSION['objetos'][$id])) {
-		unset($_SESSION['objetos'][$id]);
-		$_SESSION['objetos'] = array_values($_SESSION['objetos']);
-	}
-	header('Location: index.php');
-	exit();
+    $id = $_GET['eliminar'];
+    if (isset($_SESSION['objetos'][$id])) {
+        unset($_SESSION['objetos'][$id]);
+        $_SESSION['objetos'] = array_values($_SESSION['objetos']);
+    }
+    header('Location: index.php');
+    exit();
 }
 
 // Editar
 $editando = false;
 $edit_id = '';
-$edit_dni = '';
-$edit_nombre = '';
-$edit_apaterno = '';
-$edit_amaterno = '';
-$edit_area = '';
-$edit_item = '';
-$edit_osolicitado = '';
-$edit_descripcion = '';
+$edit_dni = $edit_nombre = $edit_apaterno = $edit_amaterno = '';
+$edit_area = $edit_item = $edit_osolicitado = $edit_descripcion = '';
 $edit_cantidad = '';
 if (isset($_GET['editar'])) {
-	$id = $_GET['editar'];
-	if (isset($_SESSION['objetos'][$id])) {
-		$editando = true;
-		$edit_id = $id;
-		$edit_dni = $_SESSION['objetos'][$id]['dni'];
-		$edit_nombre = $_SESSION['objetos'][$id]['nombre'];
-		$edit_apaterno = $_SESSION['objetos'][$id]['apaterno'];
-		$edit_amaterno = $_SESSION['objetos'][$id]['amaterno'];
-		$edit_area = $_SESSION['objetos'][$id]['area'];
-		$edit_item = $_SESSION['objetos'][$id]['item'];
-		$edit_osolicitado = $_SESSION['objetos'][$id]['osolicitado'];
-		$edit_descripcion = $_SESSION['objetos'][$id]['descripcion'];
-		$edit_cantidad = $_SESSION['objetos'][$id]['cantidad'];
-	}
+    $id = $_GET['editar'];
+    if (isset($_SESSION['objetos'][$id])) {
+        $editando = true;
+        $edit_id = $id;
+        $edit_dni = $_SESSION['objetos'][$id]['dni'];
+        $edit_nombre = $_SESSION['objetos'][$id]['nombre'];
+        $edit_apaterno = $_SESSION['objetos'][$id]['apaterno'];
+        $edit_amaterno = $_SESSION['objetos'][$id]['amaterno'];
+        $edit_area = $_SESSION['objetos'][$id]['area'];
+        $edit_item = $_SESSION['objetos'][$id]['item'];
+        $edit_osolicitado = $_SESSION['objetos'][$id]['osolicitado'];
+        $edit_descripcion = $_SESSION['objetos'][$id]['descripcion'];
+        $edit_cantidad = $_SESSION['objetos'][$id]['cantidad'];
+    }
 }
 ?>
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
