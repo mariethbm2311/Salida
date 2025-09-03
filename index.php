@@ -38,11 +38,11 @@ if (!isset($_SESSION['objetos'])) {
 
 // Cargar datos desde la base de datos al iniciar
 if (empty($_SESSION['objetos'])) {
-    $result = $conn->query("SELECT * FROM objetos ORDER BY fecha DESC LIMIT 10");
+    $result = $conn->query("SELECT * FROM objetos ORDER BY fecha DESC");
     
     if ($result && $result->num_rows > 0) {
         while ($row = $result->fetch_assoc()) {
-            $objeto = [
+            $_SESSION['objetos'][] = [
                 'id' => $row['id'],
                 'fecha' => $row['fecha'],
                 'dni' => $row['dni'],
@@ -56,34 +56,28 @@ if (empty($_SESSION['objetos'])) {
                 'cantidad' => $row['cantidad'],
                 'estado' => $row['estado']
             ];
-            
-            // Insertar cada registro al inicio del arreglo
-            array_unshift($_SESSION['objetos'], $objeto);
-
-            // Mantener máximo 10 registros
-            if (count($_SESSION['objetos']) > 10) {
-                array_pop($_SESSION['objetos']);
-            }
         }
     }
 }
 
 
 
-	// Agregar o actualizar
-	if (isset($_POST['guardar_objeto'])) {
+// Agregar o actualizar
+if (isset($_POST['guardar_objeto'])) {
     $dni = trim($_POST['dni'] ?? '');
     $nombre = trim($_POST['nombre'] ?? '');
     $apaterno = trim($_POST['apaterno'] ?? '');
     $amaterno = trim($_POST['amaterno'] ?? '');
     $area = trim($_POST['area'] ?? '');
-	$item = trim($_POST['item'] ?? '');
+    $item = trim($_POST['item'] ?? '');
     $osolicitado = trim($_POST['osolicitado'] ?? '');
     $descripcion = trim($_POST['descripcion'] ?? '');
-    $cantidad = intval($_POST['cantidad'] ?? 1); 
+    $cantidad = intval($_POST['cantidad'] ?? 1);
     $estado = 'Prestado';
     $edit_index = $_POST['edit_index'] ?? '';
     
+    // Obtener la fecha actual
+    $fecha_actual = date('Y-m-d H:i:s');
 
     // Validaciones
     $errores = [];
@@ -94,32 +88,27 @@ if (empty($_SESSION['objetos'])) {
     if (empty($area)) $errores[] = 'Debe seleccionar un área';
     if (empty($osolicitado)) $errores[] = 'Debe seleccionar un objeto solicitado';
     if ($cantidad < 1 || $cantidad > 100) $errores[] = 'La cantidad debe ser entre 1 y 100';
-    
+
     if (empty($errores)) {
         if ($edit_index !== '') {
-
-            // Actualizar en base de datos
+            // Actualizar en base de datos 
             $id_real = $_SESSION['objetos'][$edit_index]['id'];
-            
-            $stmt = $conn->prepare("UPDATE objetos SET dni=?, nombre=?, apaterno=?, amaterno=?, area=?, item=?, osolicitado=?, descripcion=?, cantidad=? WHERE id=?");
-            
+            $stmt = $conn->prepare("UPDATE objetos SET dni=?, nombre=?, apaterno=?, amaterno=?, area=?, item=?, osolicitado=?, descripcion=?, cantidad=?, fecha=? WHERE id=?");
             if ($stmt === false) {
                 die("Error en la preparación de la consulta: " . $conn->error);
             }
-            
-            $stmt->bind_param("ssssssssii", $dni, $nombre, $apaterno, $amaterno, $area, $item, $osolicitado, $descripcion, $cantidad, $id_real);
+            $stmt->bind_param("ssssssssisi", $dni, $nombre, $apaterno, $amaterno, $area, $item, $osolicitado, $descripcion, $cantidad, $fecha_actual, $id_real);
             
             if (!$stmt->execute()) {
                 die("Error al actualizar el objeto: " . $stmt->error);
             }
-            
             $stmt->close();
-            
+
             // Actualizar también en sesión
             if (isset($_SESSION['objetos'][$edit_index])) {
                 $_SESSION['objetos'][$edit_index] = [
                     'id' => $id_real,
-                    'fecha' => $_SESSION['objetos'][$edit_index]['fecha'],
+                    'fecha' => $fecha_actual, 
                     'dni' => $dni,
                     'nombre' => $nombre,
                     'apaterno' => $apaterno,
@@ -134,47 +123,39 @@ if (empty($_SESSION['objetos'])) {
             }
         } else {
             // Insertar en base de datos
-            $stmt = $conn->prepare("INSERT INTO objetos (dni, nombre, apaterno, amaterno, area, item, osolicitado, descripcion, cantidad, estado) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            
+            $stmt = $conn->prepare("INSERT INTO objetos (dni, nombre, apaterno, amaterno, area, item, osolicitado, descripcion, cantidad, estado, fecha) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
             if ($stmt === false) {
                 die("Error en la preparación de la consulta: " . $conn->error);
             }
-            
-            $stmt->bind_param("ssssssssis", $dni, $nombre, $apaterno, $amaterno, $area, $item, $osolicitado, $descripcion, $cantidad, $estado);
+            $stmt->bind_param("ssssssssiss", $dni, $nombre, $apaterno, $amaterno, $area, $item, $osolicitado, $descripcion, $cantidad, $estado, $fecha_actual);
             
             if (!$stmt->execute()) {
                 die("Error al insertar el objeto: " . $stmt->error);
             }
-            
             $id_insertado = $stmt->insert_id;
             $stmt->close();
-            
-			// Guardar también en sesión
-			$objeto = [
-    		'id' => $id_insertado,
-    		'fecha' => date('Y-m-d H:i:s'),
-    		'dni' => $dni,
-    		'nombre' => $nombre,
-    		'apaterno' => $apaterno,
-    		'amaterno' => $amaterno,
-    		'area' => $area,
-    		'item' => $item,
-    		'osolicitado' => $osolicitado,
-    		'descripcion' => $descripcion,
-    		'cantidad' => $cantidad,
-    	'estado' => $estado
-			];
 
-		array_unshift($_SESSION['objetos'], $objeto); // 👈 en vez de []
-
+            // Guardar también en sesión
+            $objeto = [
+                'id' => $id_insertado,
+                'fecha' => $fecha_actual,
+                'dni' => $dni,
+                'nombre' => $nombre,
+                'apaterno' => $apaterno,
+                'amaterno' => $amaterno,
+                'area' => $area,
+                'item' => $item,
+                'osolicitado' => $osolicitado,
+                'descripcion' => $descripcion,
+                'cantidad' => $cantidad,
+                'estado' => $estado
+            ];
+            $_SESSION['objetos'][] = $objeto;
         }
-
-       
         header('Location: index.php');
         exit();
     }
 }
-
 // Cambiar estado
 if (isset($_GET['cambiar_estado'])) {
     $index = $_GET['cambiar_estado'];
@@ -226,12 +207,12 @@ if (isset($_GET['eliminar'])) {
     exit();
 }
 
-	// Editar 
-	$editando = false;
-	$edit_index = '';
-	$edit_dni = $edit_nombre = $edit_apaterno = $edit_amaterno = '';
-	$edit_area = $edit_item = $edit_osolicitado = $edit_descripcion = '';
-	$edit_cantidad = '1'; 
+// Editar 
+$editando = false;
+$edit_index = '';
+$edit_dni = $edit_nombre = $edit_apaterno = $edit_amaterno = '';
+$edit_area = $edit_item = $edit_osolicitado = $edit_descripcion = '';
+$edit_cantidad = '1'; 
 
 if (isset($_GET['editar'])) {
     $index = $_GET['editar'];
@@ -250,7 +231,6 @@ if (isset($_GET['editar'])) {
         $edit_cantidad = $_SESSION['objetos'][$index]['cantidad'];
     }
 }
-
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -299,7 +279,7 @@ if (isset($_GET['editar'])) {
 		}
 		
 		.container { 
-			max-width: 1270px; 
+			max-width: 1285px; 
 			margin: 30px auto; 
 			padding: 20px; 
 		}
@@ -692,8 +672,13 @@ if (isset($_GET['editar'])) {
 						</tr>
 					</thead>
 					<tbody>
-						<?php if (!empty($_SESSION['objetos'])): ?>
-							<?php foreach ($_SESSION['objetos'] as $i => $obj): ?>
+						<?php if (!empty($_SESSION['objetos'])): ?>	
+							<?php 
+							usort($_SESSION['objetos'], function($a, $b) {
+								return strtotime($b['fecha']) - strtotime($a['fecha']);
+							});
+							?>
+							<?php foreach (array_slice($_SESSION['objetos'], 0, 8) as $i => $obj): ?>
 								<tr>
 									<td><?php echo htmlspecialchars($obj['id']); ?></td>
 									<td><?php echo isset($obj['fecha']) ? htmlspecialchars($obj['fecha']) : '-'; ?></td>
@@ -763,7 +748,7 @@ if (isset($_GET['editar'])) {
 			e.preventDefault();
 		}
 	}
-
+	
 
 	document.addEventListener('DOMContentLoaded', function() {
 		const nombre = document.querySelector('input[name="nombre"]');
