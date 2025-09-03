@@ -269,10 +269,13 @@ if (isset($_GET['editar'])) {
 <!DOCTYPE html>
 <html lang="es">
 <head>
-	<meta charset="UTF-8">
-	<title>Sistema de Control de Objetos</title>
-	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-	<style>
+    <meta charset="UTF-8">
+    <title>Sistema de Control de Objetos</title>
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="logo2.png">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
 		:root {
 			--color-primary: #504ABC;
 			--color-secondary: #6c757d;
