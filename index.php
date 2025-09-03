@@ -31,18 +31,18 @@ if (isset($_GET['logout'])) {
 
 if (isset($_SESSION['usuario'])):
 
-// Inicializar array de objetos en sesión si no existe
+
 if (!isset($_SESSION['objetos'])) {
     $_SESSION['objetos'] = [];
 }
 
-// Cargar datos desde la base de datos al iniciar (solo una vez)
+// Cargar datos desde la base de datos al iniciar
 if (empty($_SESSION['objetos'])) {
-    $result = $conn->query("SELECT * FROM objetos ORDER BY fecha DESC");
+    $result = $conn->query("SELECT * FROM objetos ORDER BY fecha DESC LIMIT 10");
     
     if ($result && $result->num_rows > 0) {
         while ($row = $result->fetch_assoc()) {
-            $_SESSION['objetos'][] = [
+            $objeto = [
                 'id' => $row['id'],
                 'fecha' => $row['fecha'],
                 'dni' => $row['dni'],
@@ -56,55 +56,35 @@ if (empty($_SESSION['objetos'])) {
                 'cantidad' => $row['cantidad'],
                 'estado' => $row['estado']
             ];
+            
+            // Insertar cada registro al inicio del arreglo
+            array_unshift($_SESSION['objetos'], $objeto);
+
+            // Mantener máximo 10 registros
+            if (count($_SESSION['objetos']) > 10) {
+                array_pop($_SESSION['objetos']);
+            }
         }
     }
 }
 
-// Función para generar código de item automáticamente
-function generarCodigoItem($osolicitado, $conn) {
-    // Obtener el último ID insertado para este tipo de objeto
-    $stmt = $conn->prepare("SELECT COUNT(*) as total FROM objetos WHERE osolicitado = ?");
-    $stmt->bind_param("s", $osolicitado);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $row = $result->fetch_assoc();
-    $total = $row['total'] + 1;
-    $stmt->close();
-    
-    // Generar prefijo según el tipo de objeto
-    $prefijos = [
-        'Extensión' => 'EXT',
-        'Laptop' => 'LAP',
-        'Proyector' => 'PRO',
-        'Mouse' => 'MOU',
-        'Teclado' => 'TEC',
-        'Monitor' => 'MON'
-    ];
-    
-    $prefijo = $prefijos[$osolicitado] ?? 'OBJ';
-    
-    // Formatear el número con ceros a la izquierda
-    $numero = str_pad($total, 3, '0', STR_PAD_LEFT);
-    
-    return $prefijo . '-' . $numero;
-}
 
-// Agregar o actualizar
-if (isset($_POST['guardar_objeto'])) {
+
+	// Agregar o actualizar
+	if (isset($_POST['guardar_objeto'])) {
     $dni = trim($_POST['dni'] ?? '');
     $nombre = trim($_POST['nombre'] ?? '');
     $apaterno = trim($_POST['apaterno'] ?? '');
     $amaterno = trim($_POST['amaterno'] ?? '');
     $area = trim($_POST['area'] ?? '');
+	$item = trim($_POST['item'] ?? '');
     $osolicitado = trim($_POST['osolicitado'] ?? '');
     $descripcion = trim($_POST['descripcion'] ?? '');
-    $cantidad = intval($_POST['cantidad'] ?? 1); // Valor por defecto 1
+    $cantidad = intval($_POST['cantidad'] ?? 1); 
     $estado = 'Prestado';
     $edit_index = $_POST['edit_index'] ?? '';
     
-    // Generar código de item automáticamente
-    $item = generarCodigoItem($osolicitado, $conn);
-    
+
     // Validaciones
     $errores = [];
     if (strlen($dni) < 7 || strlen($dni) > 8) $errores[] = 'El DNI debe tener entre 7 y 8 dígitos';
@@ -117,6 +97,7 @@ if (isset($_POST['guardar_objeto'])) {
     
     if (empty($errores)) {
         if ($edit_index !== '') {
+
             // Actualizar en base de datos
             $id_real = $_SESSION['objetos'][$edit_index]['id'];
             
@@ -152,7 +133,7 @@ if (isset($_POST['guardar_objeto'])) {
                 ];
             }
         } else {
-            // Modo inserción - Insertar en base de datos
+            // Insertar en base de datos
             $stmt = $conn->prepare("INSERT INTO objetos (dni, nombre, apaterno, amaterno, area, item, osolicitado, descripcion, cantidad, estado) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
             
             if ($stmt === false) {
@@ -168,26 +149,27 @@ if (isset($_POST['guardar_objeto'])) {
             $id_insertado = $stmt->insert_id;
             $stmt->close();
             
-            // Guardar también en sesión
-            $objeto = [
-                'id' => $id_insertado,
-                'fecha' => date('Y-m-d H:i:s'),
-                'dni' => $dni,
-                'nombre' => $nombre,
-                'apaterno' => $apaterno,
-                'amaterno' => $amaterno,
-                'area' => $area,
-                'item' => $item,
-                'osolicitado' => $osolicitado,
-                'descripcion' => $descripcion,
-                'cantidad' => $cantidad,
-                'estado' => $estado
-            ];
-            
-            $_SESSION['objetos'][] = $objeto;
+			// Guardar también en sesión
+			$objeto = [
+    		'id' => $id_insertado,
+    		'fecha' => date('Y-m-d H:i:s'),
+    		'dni' => $dni,
+    		'nombre' => $nombre,
+    		'apaterno' => $apaterno,
+    		'amaterno' => $amaterno,
+    		'area' => $area,
+    		'item' => $item,
+    		'osolicitado' => $osolicitado,
+    		'descripcion' => $descripcion,
+    		'cantidad' => $cantidad,
+    	'estado' => $estado
+			];
+
+		array_unshift($_SESSION['objetos'], $objeto); // 👈 en vez de []
+
         }
 
-        // Redireccionar para evitar doble sbida
+       
         header('Location: index.php');
         exit();
     }
@@ -206,7 +188,7 @@ if (isset($_GET['cambiar_estado'])) {
         $stmt->bind_param("si", $nuevo_estado, $id_real);
         
         if ($stmt->execute()) {
-            // Actualizar en sesión solo si la consulta fue exitosa
+            // Actualizar en sesión si esta correcto
             $_SESSION['objetos'][$index]['estado'] = $nuevo_estado;
         }
         
@@ -220,8 +202,8 @@ if (isset($_GET['cambiar_estado'])) {
 // Eliminar
 if (isset($_GET['eliminar'])) {
     $index = $_GET['eliminar'];
-    
-    if (isset($_SESSION['objetos'][$index])) {
+
+    if (isset($_SESSION['objetos'][$index]) && $_SESSION['objetos'][$index]['estado'] === 'Devuelto') {
         $id_real = $_SESSION['objetos'][$index]['id'];
         
         // Borrar en la base de datos
@@ -229,24 +211,27 @@ if (isset($_GET['eliminar'])) {
         $stmt->bind_param("i", $id_real);
         
         if ($stmt->execute()) {
-            // Borrar en sesión solo si la consulta fue exitosa
+            // Borrar en sesión solo si esta correcto
             unset($_SESSION['objetos'][$index]);
             $_SESSION['objetos'] = array_values($_SESSION['objetos']);
         }
         
         $stmt->close();
+    }else{
+       // Manejar el caso en que el objeto no está en la sesión o no está devuelto
+	   echo "El objeto no está disponible para eliminar.";
     }
-    
+
     header('Location: index.php');
     exit();
 }
 
-// Editar - Cargar datos para edición
-$editando = false;
-$edit_index = '';
-$edit_dni = $edit_nombre = $edit_apaterno = $edit_amaterno = '';
-$edit_area = $edit_item = $edit_osolicitado = $edit_descripcion = '';
-$edit_cantidad = '1'; // Valor por defecto 1
+	// Editar 
+	$editando = false;
+	$edit_index = '';
+	$edit_dni = $edit_nombre = $edit_apaterno = $edit_amaterno = '';
+	$edit_area = $edit_item = $edit_osolicitado = $edit_descripcion = '';
+	$edit_cantidad = '1'; 
 
 if (isset($_GET['editar'])) {
     $index = $_GET['editar'];
@@ -265,15 +250,14 @@ if (isset($_GET['editar'])) {
         $edit_cantidad = $_SESSION['objetos'][$index]['cantidad'];
     }
 }
+
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
+	 <meta charset="UTF-8">
     <title>Sistema de Control de Objetos</title>
-    <!-- Favicon -->
-    <link rel="icon" type="image/png" href="logo2.png">
-    <!-- Font Awesome -->
+    <link rel="icon" type="image/png" href="escudo.png">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
 		:root {
@@ -315,7 +299,7 @@ if (isset($_GET['editar'])) {
 		}
 		
 		.container { 
-			max-width: 1200px; 
+			max-width: 1270px; 
 			margin: 30px auto; 
 			padding: 20px; 
 		}
@@ -441,7 +425,7 @@ if (isset($_GET['editar'])) {
 		}
 		
 		tr:hover {
-			background: #e9ecef;
+			background: #e9daf7ff;
 		}
 		
 		.acciones {
@@ -556,11 +540,11 @@ if (isset($_GET['editar'])) {
 <body>
 	<header>
 		<div style="display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 0 20px;">
-			<span style="font-size: 20px; font-weight: bold;">Sistema de Control de Objetos</span>
+			<span style="font-size: 20px; font-weight: bold;"> <i class="fas fa-box"></i> Sistema de Control de Objetos</span>
 			<div>
 				<span style="margin-right: 15px;">Bienvenido, <?php echo htmlspecialchars($_SESSION['usuario']); ?>!</span>
 				<a href="?logout=1" style="color: #fff; text-decoration: none; background: rgba(255,255,255,0.2); padding: 8px 15px; border-radius: 5px;">
-					<i class="fas fa-sign-out-alt"></i> Cerrar sesión
+					<i class="fas fa-sign-out-alt"></i> 
 				</a>
 			<div>
 		</div>
@@ -590,7 +574,7 @@ if (isset($_GET['editar'])) {
 						<label class="form-label">DNI (7-8 dígitos)</label>
 						<input type="text" name="dni" placeholder="Ej: 71234567" 
 							value="<?php echo htmlspecialchars($edit_dni); ?>" required 
-							pattern="[0-9]{7,8}" title="Ingrese un DNI válido de 7 u 8 dígitos">
+							maxlength="8" title="Ingrese un DNI válido de 8 dígitos">
 					</div>
 					
 					<div class="form-group">
@@ -611,9 +595,9 @@ if (isset($_GET['editar'])) {
 					
 					<div class="form-group">
 						<label class="form-label">Apellido Materno</label>
-						<input type="text" name="amaterno" placeholder="Apellido materno (opcional)" 
+						<input type="text" name="amaterno" placeholder="Apellido materno" 
 							value="<?php echo htmlspecialchars($edit_amaterno); ?>" 
-							maxlength="50">
+							required maxlength="50">
 					</div>
 					
 					<div class="form-group">
@@ -636,7 +620,7 @@ if (isset($_GET['editar'])) {
 				<div class="form-row">
 					<div class="form-group">
 						<label class="form-label">Objeto Solicitado</label>
-						<select name="osolicitado" id="objetoSelect" required onchange="actualizarItem()">
+						<select name="osolicitado" id="objetoSelect" required onchange="">
 							<option value="" disabled <?php echo $edit_osolicitado === '' ? 'selected' : ''; ?>>Seleccione un objeto</option>
 							<option value="Extensión" <?php echo $edit_osolicitado === 'Extensión' ? 'selected' : ''; ?>>Extensión</option>
 							<option value="Laptop" <?php echo $edit_osolicitado === 'Laptop' ? 'selected' : ''; ?>>Laptop</option>
@@ -648,22 +632,17 @@ if (isset($_GET['editar'])) {
 					</div>
 					
 					<div class="form-group">
-						<label class="form-label">Código de Item (Automático)</label>
-						<div class="item-code" id="itemCode">
-							<?php if ($editando): ?>
-								<?php echo htmlspecialchars($edit_item); ?>
-							<?php else: ?>
-								SELECCIONE UN OBJETO
-							<?php endif; ?>
-						</div>
-						<input type="hidden" name="item" id="itemInput" value="<?php echo htmlspecialchars($edit_item); ?>">
+						<label class="form-label">Código</label>
+						<input type="text" name="item" placeholder="Código de objeto" 
+							value="<?php echo htmlspecialchars($edit_item); ?>" required
+							maxlength="20">
 					</div>
 				</div>
 				
 				<div class="form-row">
 					<div class="form-group">
 						<label class="form-label">Descripción (opcional)</label>
-						<input name="descripcion" placeholder="Detalles adicionales del objeto" 
+						<input name="descripcion" placeholder="Detalles adicionales del objeto (Máximo 200 caracteres)" 
 							value="<?php echo htmlspecialchars($edit_descripcion); ?>" 
 							maxlength="200">
 					</div>
@@ -675,7 +654,7 @@ if (isset($_GET['editar'])) {
 					</div>
 				</div>
 				
-				<div style="margin-top: 20px;">
+				<div style="margin-top: 20px; text-align: center;">
 					<button type="submit" name="guardar_objeto" class="btn btn-primary">
 						<i class="fas fa-<?php echo $editando ? 'sync' : 'save'; ?>"></i> 
 						<?php echo $editando ? 'Actualizar' : 'Registrar'; ?>
@@ -704,7 +683,7 @@ if (isset($_GET['editar'])) {
 							<th>DNI</th>
 							<th>Solicitante</th>
 							<th>Área</th>
-							<th>Item</th>
+							<th>Código</th>
 							<th>Objeto</th>
 							<th>Descripción</th>
 							<th>Cantidad</th>
@@ -738,9 +717,16 @@ if (isset($_GET['editar'])) {
 											<a href="?cambiar_estado=<?php echo $i; ?>" class="btn-icon btn-status" title="<?php echo $obj['estado'] === 'Prestado' ? 'Marcar como Devuelto' : 'Marcar como Prestado'; ?>">
 												<i class="fas fa-<?php echo $obj['estado'] === 'Prestado' ? 'check-circle' : 'undo'; ?>"></i>
 											</a>
+											<?php if ($obj['estado'] === 'Devuelto'): ?>
 											<a href="?eliminar=<?php echo $i; ?>" class="btn-icon btn-delete" title="Eliminar" onclick="return confirm('¿Está seguro de eliminar este registro?');">
-												<i class="fas fa-trash"></i>
-											</a>
+            						<i class="fas fa-trash"></i>
+        							</a>
+    									<?php else: ?>
+        								<span class="btn-icon btn-delete" style="opacity:0.4; cursor:not-allowed;" title="No se puede eliminar mientras esté Prestado">
+            				<i class="fas fa-lock"></i>
+        			</span>
+    					<?php endif; ?>
+				
 										</div>
 									</td>
 								</tr>
@@ -777,39 +763,7 @@ if (isset($_GET['editar'])) {
 			e.preventDefault();
 		}
 	}
-	
-	// Función para actualizar el código de item según el objeto seleccionado
-	function actualizarItem() {
-		const objetoSelect = document.getElementById('objetoSelect');
-		const itemCode = document.getElementById('itemCode');
-		const itemInput = document.getElementById('itemInput');
-		const objeto = objetoSelect.value;
-		
-		if (objeto) {
-			// Hacer una solicitud AJAX para obtener el próximo código
-			fetch('generar_item.php?objeto=' + encodeURIComponent(objeto))
-				.then(response => response.text())
-				.then(codigo => {
-					itemCode.textContent = codigo;
-					itemInput.value = codigo;
-				})
-				.catch(error => {
-					console.error('Error:', error);
-					// Generar un código provisional si falla la solicitud
-					const prefijos = {
-						'Extensión': 'EXT', 'Laptop': 'LAP', 'Proyector': 'PRO',
-						'Mouse': 'MOU', 'Teclado': 'TEC', 'Monitor': 'MON'
-					};
-					const prefijo = prefijos[objeto] || 'OBJ';
-					const codigoProvisional = prefijo + '-001';
-					itemCode.textContent = codigoProvisional;
-					itemInput.value = codigoProvisional;
-				});
-		} else {
-			itemCode.textContent = 'SELECCIONE UN OBJETO';
-			itemInput.value = '';
-		}
-	}
+
 
 	document.addEventListener('DOMContentLoaded', function() {
 		const nombre = document.querySelector('input[name="nombre"]');
@@ -822,7 +776,7 @@ if (isset($_GET['editar'])) {
 		if (amaterno) amaterno.addEventListener('keydown', soloLetras);
 		if (dni) dni.addEventListener('keydown', soloNumeros);
 		
-		// Si estamos editando, mostrar el código actual
+		
 		<?php if ($editando): ?>
 			document.getElementById('itemCode').textContent = '<?php echo $edit_item; ?>';
 			document.getElementById('itemInput').value = '<?php echo $edit_item; ?>';
@@ -841,7 +795,7 @@ if (isset($_GET['editar'])) {
 		<style>
 			body { 
 				font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-				background: linear-gradient(135deg, #504ABC 0%, #6a11cb 100%);
+				background: #504ABC;
 				height: 100vh;
 				display: flex;
 				align-items: center;
@@ -867,7 +821,7 @@ if (isset($_GET['editar'])) {
 			h2 {
 				color: #504ABC;
 				margin-bottom: 30px;
-				font-weight: 600;
+				font-weight: bold
 			}
 			
 			.input-group {
@@ -899,7 +853,7 @@ if (isset($_GET['editar'])) {
 			}
 			
 			.btn-login {
-				width: 100%;
+				width: 60%;
 				padding: 12px;
 				background: #504ABC;
 				color: white;
@@ -926,6 +880,21 @@ if (isset($_GET['editar'])) {
 		</style>
 	</head>
 	<body>
+		<script>
+		// Solo letras y espacios para nombre y apellidos
+		function soloLetras(e) {
+			let key = e.key;
+			// Permitir letras, espacio, backspace, tab, y flechas
+			if (!/^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]$/.test(key) &&
+					!['Backspace','Tab','ArrowLeft','ArrowRight','Delete'].includes(key)) {
+				e.preventDefault();
+			}
+		}
+		document.addEventListener('DOMContentLoaded', function() {
+			const usuario = document.querySelector('input[name="usuario"]');
+			if (usuario) usuario.addEventListener('keydown', soloLetras);
+		});
+		</script>
 		<div class="login-container">
 			<img src="logo.png" alt="Logo" class="logo">
 			<h2>INICIO DE SESIÓN</h2>
@@ -939,7 +908,7 @@ if (isset($_GET['editar'])) {
 			<form method="post">
 				<div class="input-group">
 					<label for="usuario"><i class="fas fa-user"></i> Usuario</label>
-					<input type="text" id="usuario" name="usuario" required placeholder="Ingrese su usuario">
+					<input type="text" id="usuario" name="usuario" required placeholder="Ingrese su usuario" minlength="3" maxlength="50">
 				</div>
 				
 				<div class="input-group">
